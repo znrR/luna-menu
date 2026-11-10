@@ -55,4 +55,8 @@ The apps are only ad-hoc signed:
 
 Logs: `~/Library/Logs/LunaMenu.log` and `~/Library/Logs/LunaPrimary.log`.
 
+## Connection
+
+Only tested via Ethernet, which I recommend. A Thunderbolt Bridge connection should also work, since the sleep notifier broadcasts on every IPv4 interface, but that is untested.
+
 Tested with Luna Secondary / Luna Display 5.3.9. Not affiliated with Astropad.
