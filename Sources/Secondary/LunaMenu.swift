@@ -4,7 +4,7 @@ import ServiceManagement
 import Darwin
 import Network
 
-// MARK: - Konstanten
+// MARK: - Constants
 
 let lunaBundleID = "com.astro-hq.LunaSecondaryMac"
 let lunaAppURL = URL(fileURLWithPath: "/Applications/Luna Secondary.app")
@@ -14,9 +14,9 @@ let lunaPorts: Set<Int> = [44553, 44554, 44555, 44556]
 let lunaTCPPort: UInt16 = 44555
 
 
-// MARK: - Netzwerk-Helfer
+// MARK: - Network helpers
 
-/// Eigene IPv4 der Standard-Schnittstelle (bevorzugt en0, sonst erste private).
+/// Own IPv4 address of the default interface (prefers en0, otherwise the first private one).
 func ownIPv4() -> String? {
     var ifaddr: UnsafeMutablePointer<ifaddrs>?
     guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
@@ -35,19 +35,19 @@ func ownIPv4() -> String? {
     return candidates.first(where: { $0.0 == "en0" })?.1 ?? candidates.first?.1
 }
 
-/// Ist der Primary wach? Luna Display lauscht dort dauerhaft auf 44554 (Discovery), 44555 nur während einer Sitzung.
-/// Der Primary hat Firewall-Tarnmodus (kein Ping, kein RST) → nur ein erfolgreicher Connect zählt verlässlich.
+/// Is the primary awake? Luna Display always listens on 44554 (discovery), on 44555 only during a session.
+/// The primary may use firewall stealth mode (no ping, no RST) → only a successful connect is reliable.
 func primaryAwake(_ ip: String) -> Bool {
     for port: UInt16 in [44554, 44555, 44556] where hostAwake(ip, port: port, timeout: 1.5) { return true }
     return pingOK(ip)
 }
 
-/// Sekunden seit der letzten lokalen Eingabe (Maus/Tastatur an diesem Mac).
+/// Seconds since the last local input (mouse/keyboard on this Mac).
 func localIdleSeconds() -> Double {
     CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: CGEventType(rawValue: ~0)!)
 }
 
-/// TCP-Connect: Verbindung oder RST = wach, Timeout = schläft/weg.
+/// TCP connect: connection or RST = awake, timeout = asleep/gone.
 func hostAwake(_ ip: String, port: UInt16 = lunaTCPPort, timeout: Double = 2.0) -> Bool {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { return false }
@@ -71,7 +71,7 @@ func hostAwake(_ ip: String, port: UInt16 = lunaTCPPort, timeout: Double = 2.0) 
     return err == 0 || err == ECONNREFUSED
 }
 
-/// Fallback: ICMP-Ping (falls der Primary zwar wach ist, Luna Display aber nicht lauscht und die Firewall RSTs schluckt).
+/// Fallback: ICMP ping (in case the primary is awake but Luna Display isn't listening and the firewall drops RSTs).
 func pingOK(_ ip: String) -> Bool {
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/sbin/ping")
@@ -84,7 +84,7 @@ func pingOK(_ ip: String) -> Bool {
 }
 
 
-/// Remote-IP der aktiven Luna-Verbindung (TCP ESTABLISHED auf einen Luna-Port), sonst nil.
+/// Remote IP of the active Luna connection (TCP ESTABLISHED on a Luna port), otherwise nil.
 func lunaPeer(pid: pid_t) -> String? {
     let out = run("/usr/sbin/lsof", ["-nP", "-a", "-p", "\(pid)", "-iTCP", "-sTCP:ESTABLISHED", "-Fn"])
     for line in out.split(separator: "\n") where line.hasPrefix("n") {
@@ -102,7 +102,7 @@ func lunaPeer(pid: pid_t) -> String? {
     return nil
 }
 
-/// Letzter Host aus der Luna-Secondary-Konfiguration.
+/// Last known host from the Luna Secondary configuration.
 func lunaLastKnownHost() -> (ip: String, name: String?)? {
     guard let data = try? Data(contentsOf: lunaStateFile),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -112,15 +112,15 @@ func lunaLastKnownHost() -> (ip: String, name: String?)? {
     return (ip, host["host_name"] as? String)
 }
 
-// MARK: - Accessibility-Fernsteuerung von Luna Secondary
+// MARK: - Remote control of Luna Secondary via Accessibility
 
 enum AXError2: Error, CustomStringConvertible {
     case notTrusted, notRunning, notFound(String)
     var description: String {
         switch self {
-        case .notTrusted: return "Luna Menu braucht die Freigabe unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen."
-        case .notRunning: return "Luna Secondary läuft nicht."
-        case .notFound(let s): return "In Luna Secondary nicht gefunden: \(s)"
+        case .notTrusted: return "Luna Menu needs permission under System Settings › Privacy & Security › Accessibility."
+        case .notRunning: return "Luna Secondary is not running."
+        case .notFound(let s): return "Not found in Luna Secondary: \(s)"
         }
     }
 }
@@ -137,7 +137,7 @@ final class LunaControl {
         if !AXIsProcessTrustedWithOptions(opts) { throw AXError2.notTrusted }
     }
 
-    /// Startet Luna Secondary (falls nötig) und holt es nach vorn. Liefert die PID.
+    /// Launches Luna Secondary (if needed) and brings it to the front. Returns the PID.
     static func launch(activate: Bool = true) async throws -> pid_t {
         if let a = app() {
             if activate { a.activate() }
@@ -166,18 +166,18 @@ final class LunaControl {
         }.first
     }
 
-    /// Manual Connection mit der gegebenen IP ausführen.
+    /// Performs a Manual Connection to the given IP.
     static func manualConnect(ip: String) async throws {
         try ensureTrusted()
         let octets = ip.split(separator: ".").map(String.init)
         guard octets.count == 4, octets.allSatisfy({ Int($0).map { (0...255).contains($0) } ?? false }) else {
-            throw AXError2.notFound("gültige IP (\(ip))")
+            throw AXError2.notFound("a valid IP (\(ip))")
         }
         let pid = try await launch()
         let appEl = AXUIElementCreateApplication(pid)
         log("manualConnect \(ip)")
 
-        // Ist der Dialog schon offen? Sonst "Manual Connection" drücken (ggf. vorher "Office").
+        // Is the dialog already open? Otherwise press "Manual Connection" (pressing "Office" first if needed).
         func fieldsWithConnect() -> (fields: [AXUIElement], connect: AXUIElement)? {
             for w in (AX.attr(appEl, kAXWindowsAttribute) as [AXUIElement]?) ?? [] {
                 guard let c = button(in: w, ["Connect"]),
@@ -197,7 +197,7 @@ final class LunaControl {
             if let m = manual {
                 AX.press(m)
             } else {
-                // Manual-Knopf evtl. nur im Office-Modus sichtbar
+                // The Manual button may only be visible in Office mode
                 var pressedOffice = false
                 for w in (AX.attr(appEl, kAXWindowsAttribute) as [AXUIElement]?) ?? [] {
                     if let o = button(in: w, ["Office"]) { AX.press(o); pressedOffice = true; break }
@@ -207,7 +207,7 @@ final class LunaControl {
                         if let b = button(in: w, ["Manual Connect"]) { return b }
                     }
                     return nil
-                }) else { throw AXError2.notFound("Knopf „Manual Connection“ (ist schon eine Verbindung aktiv?)") }
+                }) else { throw AXError2.notFound("the “Manual Connection” button (is a connection already active?)") }
                 AX.press(m2)
             }
         }
@@ -217,8 +217,8 @@ final class LunaControl {
             found = fieldsWithConnect()
             if found == nil { try? await Task.sleep(nanoseconds: 200_000_000) }
         }
-        guard let dlg = found else { throw AXError2.notFound("IP-Felder im Manual-Connect-Dialog") }
-        // Die vier Oktett-Felder liegen nebeneinander: nach x sortieren, die letzten vier Zeilen-Nachbarn nehmen.
+        guard let dlg = found else { throw AXError2.notFound("the IP fields in the Manual Connect dialog") }
+        // The four octet fields sit side by side: sort by x and take the last four.
         let fields = dlg.fields.sorted { AX.frame($0).minX < AX.frame($1).minX }.suffix(4)
         for (f, o) in zip(fields, octets) {
             AXUIElementSetAttributeValue(f, kAXFocusedAttribute as CFString, kCFBooleanTrue)
@@ -227,31 +227,31 @@ final class LunaControl {
         }
         try? await Task.sleep(nanoseconds: 300_000_000)
         AX.press(dlg.connect)
-        log("manualConnect: Connect gedrückt")
+        log("manualConnect: pressed Connect")
     }
 
-    /// Wirkung wie langes Esc: Luna Secondary beenden. Ein kurzes Esc ignoriert die App (sie will ~3 s gehalten werden),
-    /// und ihr reguläres Beenden hängt noch 5 s mit dem Wartebildschirm → nach 0,5 s hart beenden.
+    /// Same effect as a long Esc press: quit Luna Secondary. The app ignores a short Esc (it wants it held for ~3 s),
+    /// and its regular quit lingers for 5 s on the waiting screen → force quit shortly after.
     static func release() async {
         guard let a = app() else { return }
         a.terminate()
         try? await Task.sleep(nanoseconds: 250_000_000)
         if !a.isTerminated { a.forceTerminate() }
         try? await Task.sleep(nanoseconds: 300_000_000)
-        log("Luna Secondary beendet (\(a.isTerminated ? "ok" : "läuft noch!"))")
+        log("Luna Secondary quit (\(a.isTerminated ? "ok" : "still running!"))")
     }
 
-    /// Einstellungen von Luna Secondary über dessen App-Menü öffnen.
+    /// Opens Luna Secondary's settings via its app menu.
     static func openSettings() async throws {
         try ensureTrusted()
         let pid = try await launch()
         let appEl = AXUIElementCreateApplication(pid)
-        guard let bar: AXUIElement = AX.attr(appEl, kAXMenuBarAttribute) else { throw AXError2.notFound("Menüleiste") }
+        guard let bar: AXUIElement = AX.attr(appEl, kAXMenuBarAttribute) else { throw AXError2.notFound("the menu bar") }
         let items = AX.all(bar) { e in
             AX.role(e) == kAXMenuItemRole as String &&
             ["Preferences", "Settings", "Einstellungen"].contains(where: { AX.title(e).hasPrefix($0) })
         }
-        guard let item = items.first else { throw AXError2.notFound("Menüpunkt „Preferences…“") }
+        guard let item = items.first else { throw AXError2.notFound("the “Preferences…” menu item") }
         AX.press(item)
     }
 }
@@ -269,21 +269,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         app.run()
     }
 
-    /// idle: Mini ist Mac mini (oder verbunden) · probing: Verbindung weg, Rolle war Secondary, Grund offen
-    /// primaryAsleep: Rolle Secondary, Primary schläft · waitingReconnect: Primary wach, Mini wird wieder Secondary
+    /// idle: this Mac is just a Mac (or connected) · probing: connection lost while acting as secondary, reason unknown
+    /// primaryAsleep: acting as secondary, primary is asleep · waitingReconnect: primary awake, becoming secondary again
     enum SleepState: String { case idle, probing, primaryAsleep, waitingReconnect }
 
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     let defaults = UserDefaults.standard
-    var peer: String?            // aktuell verbundener Primary
-    var lastPeer: String?        // zuletzt verbundener Primary (für Schlaf/Aufwachen)
+    var peer: String?            // currently connected primary
+    var lastPeer: String?        // last connected primary (for sleep/wake)
     var sleepState: SleepState = .idle
     var failCount = 0
     var stateSince = Date()
     var busy = false
     var probeInFlight = false
     var listener: NWListener?
-    var melderLast: [String: (state: String, at: Date)] = [:]   // letzte Melder-Meldung je Primary-IP
+    var melderLast: [String: (state: String, at: Date)] = [:]   // last notifier message per primary IP
 
     var history: [String] {
         get { defaults.stringArray(forKey: "history") ?? [] }
@@ -293,20 +293,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         get { (defaults.dictionary(forKey: "names") as? [String: String]) ?? [:] }
         set { defaults.set(newValue, forKey: "names") }
     }
-    /// Modus "Bildschirm" (iMac): Luna bleibt immer offen. Modus "Mac" (Mini): von Hand geweckt → Luna weg.
+    /// "Display" mode (iMac): Luna always stays open. "Mac" mode (Mac mini): woken by hand → Luna quits.
     var monitorOnly: Bool {
         get { defaults.object(forKey: "monitorOnly") as? Bool ?? (macName == "iMac") }
         set { defaults.set(newValue, forKey: "monitorOnly") }
     }
-    /// Mac-Modus: von Hand übernommen → automatisches Wiederverbinden von Luna unterbinden, bis der Nutzer selbst umschaltet.
+    /// Mac mode: taken over by hand → block Luna's automatic reconnect until the user switches back.
     var heldAsMac = false
-    /// Bis wann ein Aufwachen des Bildschirms von uns selbst kommt (caffeinate) und nicht "von Hand".
+    /// Until when a display wake is caused by us (caffeinate) rather than by hand.
     var selfWakeUntil = Date.distantPast
     var sleepCoupling: Bool {
         get { defaults.object(forKey: "sleepCoupling") as? Bool ?? true }
         set { defaults.set(newValue, forKey: "sleepCoupling") }
     }
-    /// Primaries, von denen schon einmal ein Melder gesendet hat (dann kein Anklopfen mehr nötig).
+    /// Primaries that have sent notifier messages before (no port probing needed then).
     var melderKnown: [String: Double] {
         get { (defaults.dictionary(forKey: "melderKnown") as? [String: Double]) ?? [:] }
         set { defaults.set(newValue, forKey: "melderKnown") }
@@ -315,13 +315,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let t = melderKnown[ip] else { return false }
         return Date().timeIntervalSince1970 - t < 14 * 86400
     }
-    /// Melder meldet sich (Herzschlag alle 10 s) → frisch.
+    /// Notifier is alive (heartbeat every 10 s) → fresh.
     func melderFresh(_ ip: String) -> Bool {
         guard let m = melderLast[ip] else { return false }
         return Date().timeIntervalSince(m.at) < 35
     }
 
-    /// "Mac mini", "iMac", … aus hw.model
+    /// "Mac mini", "iMac", … from hw.model
     let macName: String = {
         var size = 0
         sysctlbyname("hw.model", nil, &size, nil, 0)
@@ -343,7 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             lastPeer = history.first
         }
         startListener()
-        // Echtzeit: Bildschirm des Mac wacht auf → sofort prüfen, ob das "von Hand" war.
+        // Real time: this Mac's display wakes → check immediately whether that was by hand.
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.screensDidWakeNotification,
                                                           object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.localScreenWoke() }
@@ -353,7 +353,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Task { @MainActor in self?.tick() }
         }
         tick()
-        log("gestartet")
+        log("started")
     }
 
     func remember(_ ip: String, name: String? = nil, front: Bool = true) {
@@ -370,34 +370,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func updateIcon() {
         let name: String
-        if peer != nil { name = "display.2" }                 // verbunden: zwei Bildschirme
+        if peer != nil { name = "display.2" }                 // connected: two displays
         else if sleepState == .primaryAsleep { name = "moon.zzz" }
-        else { name = "display" }                             // einfach der Bildschirm
+        else { name = "display" }                             // just the display
         setStatusSymbol(item.button, name, fallback: peer != nil ? "▣▣" : (sleepState == .primaryAsleep ? "☾" : "▣"))
         item.button?.toolTip = statusText()
     }
 
     func primaryText(_ ip: String) -> String? {
         guard melderFresh(ip) || hasMelder(ip), let m = melderLast[ip] else { return nil }
-        if !melderFresh(ip) { return "Primary schläft (Melder still)" }
+        if !melderFresh(ip) { return "Primary asleep (notifier silent)" }
         switch m.state {
-        case "sleep": return "Primary schläft"
-        case "screenoff": return "Primary: Bildschirm aus"
-        default: return "Primary wach"
+        case "sleep": return "Primary asleep"
+        case "screenoff": return "Primary: display off"
+        default: return "Primary awake"
         }
     }
 
     func statusText() -> String {
         if let p = peer {
-            if let t = primaryText(p), t != "Primary wach" { return "Verbunden mit \(label(p)) – \(t)" }
-            return "Verbunden mit \(label(p))"
+            if let t = primaryText(p), t != "Primary awake" { return "Connected to \(label(p)) – \(t)" }
+            return "Connected to \(label(p))"
         }
         switch sleepState {
-        case .primaryAsleep: return "Primary schläft – Bildschirm aus"
-        case .probing: return "Verbindung weg – prüfe Primary …"
-        case .waitingReconnect: return "Primary wach – werde wieder Secondary …"
+        case .primaryAsleep: return "Primary asleep – display off"
+        case .probing: return "Connection lost – checking primary …"
+        case .waitingReconnect: return "Primary awake – reconnecting as secondary …"
         case .idle:
-            let base = LunaControl.app() == nil ? "\(macName) (Luna Secondary aus)" : "\(macName) – bereit als Monitor"
+            let base = LunaControl.app() == nil ? "\(macName) (Luna Secondary not running)" : "\(macName) – ready to be a display"
             if let ip = lastPeer, let t = primaryText(ip) { return "\(base) · \(t)" }
             return base
         }
@@ -405,11 +405,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func setState(_ s: SleepState) {
         guard s != sleepState else { return }
-        log("Zustand \(sleepState.rawValue) → \(s.rawValue)")
+        log("state \(sleepState.rawValue) → \(s.rawValue)")
         sleepState = s; stateSince = Date(); failCount = 0
     }
 
-    // MARK: Melder-Empfang
+    // MARK: Notifier receiver
 
     func startListener() {
         do {
@@ -432,10 +432,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
                 receive()
             }
-            l.stateUpdateHandler = { st in if case .failed(let e) = st { log("Melder-Empfang fehlgeschlagen: \(e)") } }
+            l.stateUpdateHandler = { st in if case .failed(let e) = st { log("notifier receiver failed: \(e)") } }
             l.start(queue: .main)
             listener = l
-        } catch { log("Melder-Empfang nicht gestartet: \(error)") }
+        } catch { log("notifier receiver not started: \(error)") }
     }
 
     func handleMelder(_ text: String, from ip: String) {
@@ -447,7 +447,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         melderLast[ip] = (state, Date())
         var k = melderKnown; k[ip] = Date().timeIntervalSince1970; melderKnown = k
         if let host, names[ip] == nil { var n = names; n[ip] = host; names = n }
-        if event != "alive" || prev != state { log("Melder \(ip): \(event) / \(state)") }
+        if event != "alive" || prev != state { log("notifier \(ip): \(event) / \(state)") }
 
         let asleep = state != "awake"
         let wasSecondary = peer == ip || (lastPeer == ip && sleepState != .idle)
@@ -465,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if peer != nil { setState(.idle) } else { setState(.waitingReconnect) }
                 wakeDisplay()
             case .probing:
-                // Primary meldet wach, Verbindung trotzdem weg → absichtlich getrennt (kurze Gnadenfrist für den Schlaf-Melder).
+                // Primary reports awake but the connection is gone → disconnected on purpose (short grace period for the sleep message).
                 if Date().timeIntervalSince(stateSince) > 15 { setState(.idle) }
             default: break
             }
@@ -473,15 +473,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
     }
 
-    // MARK: Überwachung / Schlaf-Kopplung
+    // MARK: Monitoring / sleep coupling
 
     func tick() {
         let newPeer = LunaControl.app().flatMap { lunaPeer(pid: $0.processIdentifier) }
         if newPeer != peer {
-            log("Verbindung: \(peer ?? "–") → \(newPeer ?? "–")")
+            log("connection: \(peer ?? "–") → \(newPeer ?? "–")")
             if let p = newPeer {
                 if heldAsMac {
-                    log("Luna hat sich selbst verbunden, Mac wurde aber von Hand übernommen → Luna Secondary beenden")
+                    log("Luna reconnected on its own, but the Mac was taken over by hand → quitting Luna Secondary")
                     heldAsMac = false
                     LunaControl.app()?.terminate()
                     peer = nil
@@ -497,14 +497,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             peer = newPeer
         }
-        // Luna Secondary beendet → Mini ist Mac mini, nichts koppeln.
+        // Luna Secondary not running → this Mac is just a Mac, nothing to couple.
         if LunaControl.app() == nil, sleepState != .idle, sleepState != .waitingReconnect { setState(.idle) }
 
-        // Mini während des Primary-Schlafs von Hand geweckt und benutzt → bleibt Mac mini.
+        // Woken and used by hand while the primary sleeps → stays a Mac.
         if sleepState == .primaryAsleep {
             let since = Date().timeIntervalSince(stateSince)
             if !monitorOnly, since > 10, CGDisplayIsAsleep(CGMainDisplayID()) == 0, localIdleSeconds() < since - 5 {
-                log("Während Primary-Schlaf von Hand benutzt → bleibt \(macName), Luna Secondary wird beendet")
+                log("used by hand while the primary sleeps → stays \(macName), quitting Luna Secondary")
                 setState(.idle)
                 heldAsMac = true
                 Task { await LunaControl.release() }
@@ -520,19 +520,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .probing:
             let since = Date().timeIntervalSince(stateSince)
             if melder {
-                // Melder still geworden (Schlaf-Meldung verloren) → Primary schläft.
+                // Notifier went silent (sleep message lost) → primary is asleep.
                 if !melderFresh(target), since > 5 { setState(.primaryAsleep); sleepDisplay() }
                 else if since > 120 { setState(.idle) }
             } else { probe(target) }
         case .primaryAsleep:
             if melder {
-                // Kein Anklopfen (würde den MacBook über den Sleep Proxy wecken) – warten auf "wake".
+                // No port probing (it could wake the primary via a Bonjour sleep proxy) – wait for "wake".
             } else if peer == nil { probe(target) }
         case .waitingReconnect:
             let waited = Date().timeIntervalSince(stateSince)
             if peer == nil, waited > 20, failCount == 0, !busy {
-                failCount = 1                // nur ein Versuch
-                log("Primary wach, keine Verbindung → Manual Connect \(target)")
+                failCount = 1                // only one attempt
+                log("primary awake, no connection → Manual Connect \(target)")
                 connect(target, showErrors: false)
             }
             if waited > 120 { setState(.idle) }
@@ -540,7 +540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
     }
 
-    /// Ersatz ohne Melder: Anklopfen an Luna-Ports.
+    /// Fallback without notifier: probe the Luna ports.
     func probe(_ target: String) {
         guard !probeInFlight else { return }
         probeInFlight = true
@@ -573,20 +573,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func localScreenWoke() {
         guard sleepState == .primaryAsleep, Date() > selfWakeUntil else { return }
-        if monitorOnly { log("Bildschirm von Hand geweckt (Modus Bildschirm → Luna bleibt)"); return }
-        log("Bildschirm von Hand geweckt → bleibt \(macName), Luna Secondary wird beendet")
+        if monitorOnly { log("display woken by hand (display mode → Luna stays)"); return }
+        log("display woken by hand → stays \(macName), quitting Luna Secondary")
         setState(.idle)
         heldAsMac = true
         Task { await LunaControl.release() }
     }
 
     func sleepDisplay() {
-        log("Bildschirm aus (pmset displaysleepnow)")
+        log("display off (pmset displaysleepnow)")
         run("/usr/bin/pmset", ["displaysleepnow"])
     }
 
     func wakeDisplay() {
-        log("Bildschirm an (caffeinate -u)")
+        log("display on (caffeinate -u)")
         selfWakeUntil = Date().addingTimeInterval(5)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
@@ -594,7 +594,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         try? p.run()
     }
 
-    // MARK: Menü
+    // MARK: Menu
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
@@ -631,7 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let sl = NSMenuItem(title: "Sleep & Wake with Primary", action: #selector(toggleSleep), keyEquivalent: "")
         sl.state = sleepCoupling ? .on : .off
         menu.addItem(sl)
-        let mo = NSMenuItem(title: "Immer Bildschirm (Luna bleibt offen)", action: #selector(toggleMonitorOnly), keyEquivalent: "")
+        let mo = NSMenuItem(title: "Always a Display (keep Luna open)", action: #selector(toggleMonitorOnly), keyEquivalent: "")
         mo.state = monitorOnly ? .on : .off
         mo.indentationLevel = 1
         menu.addItem(mo)
@@ -671,7 +671,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Task {
             defer { busy = false }
             do { try await LunaControl.manualConnect(ip: ip) }
-            catch { log("Fehler: \(error)"); if showErrors { showError(error) } }
+            catch { log("error: \(error)"); if showErrors { showError(error) } }
         }
     }
 
@@ -680,7 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let prefix = own.split(separator: ".").prefix(3).joined(separator: ".") + "."
         let a = NSAlert()
         a.messageText = "Allow from new IP"
-        a.informativeText = "Letztes Oktett der IP des Primary (dieses Subnetz: \(prefix)x).\nDie volle IP zeigt Luna Display auf dem Primary unter „Manual Connect“."
+        a.informativeText = "Last octet of the primary's IP address (this subnet: \(prefix)x).\nLuna Display on the primary shows the full IP under “Manual Connect”."
         let v = NSStackView(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         v.orientation = .horizontal
         let lbl = NSTextField(labelWithString: prefix)
@@ -697,11 +697,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         guard a.runModal() == .alertFirstButtonReturn else { return }
         let t = tf.stringValue.trimmingCharacters(in: .whitespaces)
-        // Volle IP eingeben geht auch.
+        // Entering a full IP address works too.
         let ip = t.contains(".") ? t : prefix + t
         guard let last = Int(ip.split(separator: ".").last ?? ""), (1...254).contains(last),
               ip.split(separator: ".").count == 4 else {
-            showError(AXError2.notFound("gültige IP („\(t)“)")); return
+            showError(AXError2.notFound("a valid IP (“\(t)”)")); return
         }
         connect(ip)
     }

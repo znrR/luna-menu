@@ -19,6 +19,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Luna Menu steuert Luna Secondary.</string>
+	<string>Luna Menu controls Luna Secondary.</string>
 </dict>
 </plist>

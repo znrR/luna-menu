@@ -3,12 +3,12 @@ import ApplicationServices
 import ServiceManagement
 import Darwin
 
-// Luna Primary: Menüleisten-Hülle für Luna Display auf dem Primary + Schlaf-Melder an den Secondary.
+// Luna Primary: menu bar wrapper for Luna Display on the primary Mac + sleep notifier for the secondary.
 
 let displayBundleID = "com.astro-hq.LunaDisplayMac"
 let displayAppURL = URL(fileURLWithPath: "/Applications/Luna Display.app")
 
-/// Schickt eine Melder-Zeile per UDP-Broadcast (alle IPv4-Schnittstellen) und optional direkt an eine IP.
+/// Sends a notifier line via UDP broadcast (all IPv4 interfaces) and optionally directly to one IP.
 func sendMelder(_ text: String, extraTarget: String?) {
     let fd = socket(AF_INET, SOCK_DGRAM, 0)
     guard fd >= 0 else { return }
@@ -88,23 +88,23 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                // Nach Systemschlaf kommt screensDidWake ggf. vor didWake → ebenfalls "awake".
+                // After system sleep, screensDidWake may arrive before didWake → also "awake".
                 self.event("screenwake", state: "awake", burst: 5)
             }
         }
-        // Herzschlag
+        // Heartbeat
         Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.send("alive") }
         }
         send("alive")
-        log("gestartet (\(hostName))")
+        log("started (\(hostName))")
     }
 
     func event(_ ev: String, state s: String, burst: Int) {
         state = s
-        log("Ereignis \(ev) → \(s)")
+        log("event \(ev) → \(s)")
         send(ev)
-        // Nach dem Aufwachen ist das Netz oft noch nicht da → mehrfach senden.
+        // Right after wake the network is often not up yet → send several times.
         if burst > 1 {
             for i in 1..<burst {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 2) { [weak self] in
@@ -120,7 +120,7 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func send(_ ev: String) {
         guard melderOn else { return }
-        // Im Schlaf keine Herzschläge (falls der Timer im Dark Wake feuert).
+        // No heartbeats while asleep (in case the timer fires during a dark wake).
         if ev == "alive", state == "sleep" { return }
         sendMelder("\(melderMagic) \(ev) \(state) \(hostName)", extraTarget: secondaryIP)
         lastSent = Date()
@@ -131,7 +131,7 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setStatusSymbol(item.button, name, fallback: "▣")
     }
 
-    // MARK: Menü
+    // MARK: Menu
 
     func displayApp() -> NSRunningApplication? {
         NSRunningApplication.runningApplications(withBundleIdentifier: displayBundleID).first
@@ -140,22 +140,22 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let running = displayApp() != nil
-        let st = NSMenuItem(title: running ? "Luna Display läuft" : "Luna Display läuft nicht", action: nil, keyEquivalent: "")
+        let st = NSMenuItem(title: running ? "Luna Display is running" : "Luna Display is not running", action: nil, keyEquivalent: "")
         st.isEnabled = false
         menu.addItem(st)
-        let ms = NSMenuItem(title: melderOn ? "Melder → \(secondaryIP.isEmpty ? "" : secondaryIP + " + ")Broadcast, \(Int(Date().timeIntervalSince(lastSent))) s her" : "Melder aus",
+        let ms = NSMenuItem(title: melderOn ? "Notifying \(secondaryIP.isEmpty ? "" : secondaryIP + " + ")broadcast, last \(Int(Date().timeIntervalSince(lastSent))) s ago" : "Notifier off",
                             action: nil, keyEquivalent: "")
         ms.isEnabled = false
         menu.addItem(ms)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Open Luna Display", action: #selector(openDisplay), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Manual Connect (IP anzeigen)", action: #selector(manualConnect), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Manual Connect (show IP)", action: #selector(manualConnect), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Settings …", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(.separator())
-        let mo = NSMenuItem(title: "Sleep & Wake an Secondary melden", action: #selector(toggleMelder), keyEquivalent: "")
+        let mo = NSMenuItem(title: "Report Sleep & Wake to Secondary", action: #selector(toggleMelder), keyEquivalent: "")
         mo.state = melderOn ? .on : .off
         menu.addItem(mo)
-        menu.addItem(NSMenuItem(title: "Secondary-IP: \(secondaryIP.isEmpty ? "nur Broadcast" : secondaryIP) …", action: #selector(setIP), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "Secondary IP: \(secondaryIP.isEmpty ? "broadcast only" : secondaryIP) …", action: #selector(setIP), keyEquivalent: ""))
         let login = NSMenuItem(title: "Open at Login", action: #selector(toggleLogin), keyEquivalent: "")
         login.state = LoginItem.isEnabled ? .on : .off
         menu.addItem(login)
@@ -176,7 +176,7 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let a = displayApp() { a.activate(); return a.processIdentifier }
         let cfg = NSWorkspace.OpenConfiguration()
         guard let a = try? await NSWorkspace.shared.openApplication(at: displayAppURL, configuration: cfg) else {
-            alert("Luna Display konnte nicht gestartet werden."); return nil
+            alert("Luna Display could not be launched."); return nil
         }
         try? await Task.sleep(nanoseconds: 2_500_000_000)
         return a.processIdentifier
@@ -185,13 +185,13 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func pressInDisplay(_ prefixes: [String], what: String) {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         guard AXIsProcessTrustedWithOptions(opts) else {
-            alert("Luna Primary braucht die Freigabe unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen.")
+            alert("Luna Primary needs permission under System Settings › Privacy & Security › Accessibility.")
             return
         }
         Task {
             guard let pid = await launchDisplay() else { return }
             try? await Task.sleep(nanoseconds: 300_000_000)
-            if !axPressMenuItem(pid: pid, prefixes: prefixes) { alert("Menüpunkt „\(what)“ in Luna Display nicht gefunden.") }
+            if !axPressMenuItem(pid: pid, prefixes: prefixes) { alert("Menu item “\(what)” not found in Luna Display.") }
         }
     }
 
@@ -203,8 +203,8 @@ final class PrimaryDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func setIP() {
         let a = NSAlert()
-        a.messageText = "IP des Secondary (Mac mini)"
-        a.informativeText = "Zusätzlich zum Broadcast wird direkt an diese IP gemeldet. Leer = nur Broadcast."
+        a.messageText = "IP address of the secondary Mac"
+        a.informativeText = "In addition to the broadcast, notifications are sent directly to this IP. Leave empty for broadcast only."
         let tf = NSTextField(frame: NSRect(x: 0, y: 0, width: 200, height: 24))
         tf.stringValue = secondaryIP
         a.accessoryView = tf

@@ -57,14 +57,14 @@ struct AX {
     static func press(_ e: AXUIElement) { AXUIElementPerformAction(e, kAXPressAction as CFString) }
 }
 
-// MARK: - Melder-Protokoll (Primary → Secondary)
-// UDP-Broadcast auf Port 44600, Text: "LUNAMENU1 <ereignis> <zustand> <hostname>"
-// zustand: awake | screenoff | sleep   ereignis: alive | sleep | wake | screensleep | screenwake
+// MARK: - Sleep notifier protocol (Primary → Secondary)
+// UDP broadcast on port 44600, text: "LUNAMENU1 <event> <state> <hostname>"
+// state: awake | screenoff | sleep   event: alive | sleep | wake | screensleep | screenwake
 
 let melderPort: UInt16 = 44600
 let melderMagic = "LUNAMENU1"
 
-/// Menüpunkt in der Menüleiste einer fremden App per AX auslösen (Titel-Präfix).
+/// Trigger a menu item in another app's menu bar via Accessibility (matched by title prefix).
 func axPressMenuItem(pid: pid_t, prefixes: [String]) -> Bool {
     let appEl = AXUIElementCreateApplication(pid)
     guard let bar: AXUIElement = AX.attr(appEl, kAXMenuBarAttribute) else { return false }
@@ -76,11 +76,11 @@ func axPressMenuItem(pid: pid_t, prefixes: [String]) -> Bool {
     return true
 }
 
-// MARK: - Rückwärtskompatibilität (iMac late 2012 / macOS 10.15)
+// MARK: - Backward compatibility (iMac late 2012 / macOS 10.15)
 
 import ServiceManagement
 
-/// Statusleisten-Symbol setzen: SF Symbol ab macOS 11, sonst kurzer Text.
+/// Set the status bar icon: SF Symbol on macOS 11+, short text otherwise.
 func setStatusSymbol(_ button: NSStatusBarButton?, _ name: String, fallback: String) {
     guard let button else { return }
     if #available(macOS 11.0, *),
@@ -95,7 +95,7 @@ func setStatusSymbol(_ button: NSStatusBarButton?, _ name: String, fallback: Str
     }
 }
 
-/// Bei Anmeldung öffnen: SMAppService ab macOS 13, sonst LaunchAgent in ~/Library/LaunchAgents.
+/// Open at login: SMAppService on macOS 13+, otherwise a LaunchAgent in ~/Library/LaunchAgents.
 enum LoginItem {
     static var agentURL: URL {
         FileManager.default.homeDirectoryForCurrentUser

@@ -19,6 +19,6 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>Luna Primary steuert Luna Display.</string>
+	<string>Luna Primary controls Luna Display.</string>
 </dict>
 </plist>

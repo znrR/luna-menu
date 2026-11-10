@@ -1,39 +1,58 @@
 # luna-menu
 
-Menüleisten-Apps für **Astropad Luna Display** im Mac-zu-Mac-Modus (Luna Secondary 5.3.9).
+Menu bar apps for **Astropad Luna Display** in Mac-to-Mac mode, where one Mac acts as the display of another.
 
-## Luna Menu – auf dem Secondary (Mac mini, iMac)
+**Main feature:** they solve the sleep and wake-up scenario between the primary and the secondary Mac. Luna Display on its own doesn't handle this: when the primary goes to sleep, the secondary keeps its screen on and sits on the waiting screen. When the primary wakes up again, nothing happens on the secondary.
 
-Steuert die App *Luna Secondary* über die Bedienungshilfen (Accessibility), denn sie hat keine Skript-Schnittstelle.
+With luna-menu:
 
-- **Turn to Monitor** – Luna Secondary starten und nach vorn holen
-- **Allow from** – *Last used* (letzte IPs) oder *New IP …*: Es wird nur das letzte Oktett im eigenen Subnetz eingegeben. Luna Menu füllt den Dialog „Manual Connection“ aus und drückt „Connect“.
-- **Settings …** – öffnet die Einstellungen von Luna Secondary
-- **Sleep & Wake with Primary** – war der Mac beim Einschlafen des Primary dessen Bildschirm, geht sein Bildschirm aus (`pmset displaysleepnow`). Wacht der Primary auf, geht der Bildschirm wieder an und die Verbindung wird erneuert.
-  - **Immer Bildschirm** (Standard auf dem iMac): Luna bleibt immer offen.
-  - **Mac-Modus** (Standard auf dem Mac mini): Wird der Mac von Hand geweckt, während der Primary schläft, wird Luna Secondary sofort beendet. Der Mac bleibt dann Mac, bis man selbst umschaltet.
-- Symbol: ein Bildschirm = frei, zwei Bildschirme = verbunden, Mond = Primary schläft
+- **Primary goes to sleep:** the secondary's display turns off, just like the regular macOS display sleep.
+- **Primary wakes up:** the secondary's display turns back on and becomes the primary's display again.
+- **You wake the secondary by hand while the primary sleeps:** depending on the mode, it either stays a display (Luna keeps waiting) or becomes a normal Mac again. In that case Luna Secondary quits right away and the Mac stays a Mac until you switch it back yourself.
+- **Display sleep on the primary** (energy saver) is mirrored as well.
 
-## Luna Primary – auf dem Primary (MacBook)
+The primary reports its sleep and wake events itself, so the secondary doesn't have to guess.
 
-Hülle um *Luna Display*: Menüpunkte für „Manual Connect“ (zeigt die IP an) und die Einstellungen. Dazu kommt ein **Schlaf-Melder**: Der Primary meldet Einschlafen, Aufwachen und das Ausschalten seines Bildschirms per UDP-Broadcast an Port 44600:
+## Luna Menu – on the secondary Mac
+
+Remote control for the *Luna Secondary* app via Accessibility, since the app has no scripting interface.
+
+- **Turn to Monitor** – launches Luna Secondary and brings it to the front.
+- **Allow from** – *Last used* (recent primaries) or *New IP …*. For a new IP you only type the last octet within your own subnet. Luna Menu fills in Luna Secondary's “Manual Connection” dialog and presses “Connect”.
+- **Settings …** – opens Luna Secondary's settings.
+- **Sleep & Wake with Primary** – the sleep/wake coupling described above.
+  - **Always a Display** (default on an iMac): Luna always stays open, and the Mac is only ever a display.
+  - Off (default on a Mac mini), i.e. *Mac mode*: if you wake the Mac by hand while the primary sleeps, Luna Secondary quits immediately.
+- **Open at Login**
+- Menu bar icon: one display = free, two displays = connected, moon = primary asleep.
+
+## Luna Primary – on the primary Mac
+
+A wrapper around *Luna Display* with menu items for “Manual Connect” (shows the IP address) and its settings. It also contains the **sleep notifier**: it reports sleep, wake, and display sleep/wake via UDP broadcast on port 44600:
 
 ```
 LUNAMENU1 <alive|sleep|wake|screensleep|screenwake> <awake|screenoff|sleep> <hostname>
 ```
 
-Alle 10 s kommt außerdem ein Lebenszeichen. Ohne Melder fragt der Secondary die Ports 44554–44556 des Primary ab. Das ist eine unsichere Ersatzlösung, denn ein Bonjour Sleep Proxy (z. B. Apple TV) kann den Primary dabei aufwecken.
+It also sends a heartbeat every 10 s. Without Luna Primary, the secondary falls back to probing the primary's Luna ports (44554–44556). That is less reliable, and a Bonjour sleep proxy (e.g. an Apple TV) may wake the primary because of it.
 
-## Bauen
+## Building
+
+Requires the Xcode Command Line Tools (`swiftc`); no Xcode project.
 
 ```bash
 ./build.sh
 ```
 
-- `Luna Menu.app` → `/Applications` (dieser Mac)
-- `build/Luna Primary.app` (+ zip) – universal, ab macOS 10.15
-- `build/iMac/Luna Menu.app` (+ zip) – Intel, ab macOS 10.15 (iMac late 2012)
+- `Luna Menu.app` → installed into `/Applications` (the Mac you build on)
+- `build/Luna Primary.app` (+ zip) – universal, macOS 10.15+
+- `build/iMac/Luna Menu.app` (+ zip) – Intel, macOS 10.15+ (e.g. iMac late 2012)
 
-Die Apps sind nur ad hoc signiert. Nach jedem Neubau muss man die Bedienungshilfen-Freigabe eventuell neu erteilen. Auf einem fremden Mac einmalig die Quarantäne entfernen: `xattr -dr com.apple.quarantine "/Applications/<App>.app"`.
+The apps are only ad-hoc signed:
 
-Protokolle: `~/Library/Logs/LunaMenu.log` und `~/Library/Logs/LunaPrimary.log`.
+- After every rebuild you may have to grant the Accessibility permission again (System Settings › Privacy & Security › Accessibility).
+- On another Mac, remove the quarantine flag once: `xattr -dr com.apple.quarantine "/Applications/<App>.app"`
+
+Logs: `~/Library/Logs/LunaMenu.log` and `~/Library/Logs/LunaPrimary.log`.
+
+Tested with Luna Secondary / Luna Display 5.3.9. Not affiliated with Astropad.

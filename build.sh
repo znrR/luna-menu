@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Baut beide Apps (ad-hoc signiert):
-#   Luna Menu.app     → Secondary (dieser Mac mini), direkt nach /Applications
-#   Luna Primary.app  → Primary (MacBook), universal ab 10.15, nach build/
-#   iMac/Luna Menu.app → Secondary für iMac late 2012 (Intel, ab 10.15), nach build/iMac/
-# Achtung: Nach jedem Neubau muss die Bedienungshilfen-Freigabe ggf. neu gesetzt werden.
+# Builds all apps (ad-hoc signed):
+#   Luna Menu.app      → secondary (this Mac), installed straight into /Applications
+#   Luna Primary.app   → primary (e.g. MacBook), universal, macOS 10.15+, into build/
+#   iMac/Luna Menu.app → secondary for older Intel Macs (e.g. iMac late 2012), macOS 10.15+, into build/iMac/
+# Note: after every rebuild you may have to grant the Accessibility permission again.
 set -e
 cd "${0:A:h}"
 
@@ -13,16 +13,16 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swiftc -O -swift-version 5 -parse-as-library Sources/Shared/*.swift Sources/Secondary/*.swift -o "$APP/Contents/MacOS/LunaMenu"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 codesign --force -s - --identifier de.r4sp.lunamenu "$APP"
-echo "gebaut: $APP"
+echo "built: $APP"
 
-# Intel ab macOS 10.15 (iMac late 2012 u. ä.): CLT hat die Kompatibilitäts-Libs nur noch für arm64,
-# daher ohne sie linken und libswift_Concurrency (Back-Deploy) ins Bundle legen.
+# Intel, macOS 10.15+ (iMac late 2012 etc.): recent Command Line Tools ship the Swift compatibility libs
+# for arm64 only, so link without them and bundle libswift_Concurrency (back-deployment).
 INTEL_FLAGS=(-target x86_64-apple-macos10.15 -runtime-compatibility-version none
   -Xfrontend -disable-autolinking-runtime-compatibility-concurrency
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks)
 CONC=/Library/Developer/CommandLineTools/usr/lib/swift-5.5/macosx/libswift_Concurrency.dylib
 
-# bundle <app> <exe> <plist> <id> <arm64-target> <quellen...>
+# bundle <app> <exe> <plist> <id> <arm64-target> <sources...>
 bundle() {
   local app=$1 exe=$2 plist=$3 id=$4 armtarget=$5; shift 5
   rm -rf "$app"; mkdir -p "$app/Contents/MacOS" "$app/Contents/Frameworks" build/tmp
@@ -39,13 +39,13 @@ bundle() {
   codesign --force -s - "$app/Contents/Frameworks/libswift_Concurrency.dylib"
   codesign --force -s - --identifier $id "$app"
   (cd "${app:h}" && rm -f "${app:t:r}.zip" && ditto -c -k --keepParent "${app:t}" "${app:t:r}.zip")
-  echo "gebaut: $PWD/$app (+ zip)"
+  echo "built: $PWD/$app (+ zip)"
 }
 
-# Primary (MacBook): universal
+# Primary: universal
 bundle "build/Luna Primary.app" LunaPrimary Resources/Info-Primary.plist de.r4sp.lunaprimary 11.0 \
   Sources/Shared/*.swift Sources/Primary/*.swift
 
-# Secondary für den iMac late 2012: nur Intel
+# Secondary for the iMac late 2012: Intel only
 bundle "build/iMac/Luna Menu.app" LunaMenu Resources/Info.plist de.r4sp.lunamenu "" \
   Sources/Shared/*.swift Sources/Secondary/*.swift
