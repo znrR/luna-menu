@@ -13,6 +13,8 @@ With luna-menu:
 
 The primary reports its sleep and wake events itself, so the secondary doesn't have to guess.
 
+Works like a charm together with **Universal Control** (both Macs active, sharing one mouse and keyboard).
+
 ## Luna Menu – on the Secondary (e.g. private Mac mini, iMac)
 
 Remote control for the *Luna Secondary* app via Accessibility, since the app has no scripting interface.
