@@ -61,6 +61,6 @@ Logs: `~/Library/Logs/LunaMenu.log` and `~/Library/Logs/LunaPrimary.log`.
 
 Only tested via Ethernet, which I recommend. A Thunderbolt Bridge connection should also work, since the sleep notifier broadcasts on every IPv4 interface, but that is untested.
 
-Tested with Luna Secondary / Luna Display 5.3.9 on a MacBook M4 (Primary), a Mac mini M4 (Secondary) and an iMac Late 2012 (Secondary).
+Tested with Luna Secondary / Luna Display 5.3.9 on a MacBook M4 (Primary) and a Mac mini M4 (Secondary). The Intel build for an iMac Late 2012 (Secondary) is not tested yet.
 
 Not affiliated with Astropad, but a fan of them :)
