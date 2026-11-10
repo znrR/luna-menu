@@ -13,7 +13,7 @@ With luna-menu:
 
 The primary reports its sleep and wake events itself, so the secondary doesn't have to guess.
 
-## Luna Menu – on the secondary Mac
+## Luna Menu – on the Secondary (e.g. private Mac mini, iMac)
 
 Remote control for the *Luna Secondary* app via Accessibility, since the app has no scripting interface.
 
@@ -26,7 +26,7 @@ Remote control for the *Luna Secondary* app via Accessibility, since the app has
 - **Open at Login**
 - Menu bar icon: one display = free, two displays = connected, moon = primary asleep.
 
-## Luna Primary – on the primary Mac
+## Luna Primary – on the Primary (e.g. company-owned MacBook)
 
 A wrapper around *Luna Display* with menu items for “Manual Connect” (shows the IP address) and its settings. It also contains the **sleep notifier**: it reports sleep, wake, and display sleep/wake via UDP broadcast on port 44600:
 
